@@ -1,0 +1,10 @@
+name: mo-life-reminder
+on:
+  schedule:
+    - cron: "*/5 * * * *"
+  workflow_dispatch:
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+            - run: curl -fsS "${{ secrets.APP_URL }}/cron/reminder?key=${{ secrets.CRON_SECRET }}"
