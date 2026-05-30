@@ -34,7 +34,7 @@ async function main() {
     size: { width: WIDTH, height: HEIGHT },
     selected: true,
     name: "mo-life-main",
-    chatBarText: "เมนูน้องช่วยจำ",
+    chatBarText: "เมนูน้องวินัย",
     areas: [
       {
         bounds: { x: 0, y: 0, width: COL, height: HEIGHT },

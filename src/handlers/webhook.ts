@@ -23,6 +23,7 @@ import {
   addDateQuickReply,
 } from "../services/line";
 import { askAI, parseIntent } from "../services/ai";
+import { getSenderName } from "../services/line";
 import {
   todayISO,
   tomorrowISO,
@@ -78,7 +79,7 @@ export async function webhookHandler(req: Request, res: Response): Promise<void>
       } else if (event.type === "follow") {
         await replyMessage(event.replyToken, [
           textMessage(
-            "สวัสดีค่ะ 💕 น้องช่วยจำพร้อมดูแลตารางชีวิตของเราแล้ว\nลองกดเมนูด้านล่าง หรือพิมพ์ 'ช่วยเหลือ' ดูวิธีใช้ได้เลยค่ะ",
+            "สวัสดีครับ น้องวินัยมาแล้ว 😎 ผู้ช่วยวินัยของบอสมอสกับบอสอร\nลองกดเมนูด้านล่าง หรือพิมพ์ 'ช่วยเหลือ' ดูวิธีใช้ได้เลยค่ะ",
             homeQuickReply()
           ),
         ]);
@@ -197,7 +198,8 @@ async function handleText(event: any): Promise<void> {
 
   // 7) AI-first: parse natural language into an intent and EXECUTE it for real.
   try {
-    if (await handleWithAI(reply, userId, text)) return;
+    const senderName = await getSenderName(event);
+    if (await handleWithAI(reply, userId, text, senderName)) return;
   } catch (err) {
     console.error("[webhook] AI handling error:", err);
   }
@@ -214,12 +216,14 @@ async function handleText(event: any): Promise<void> {
 async function handleWithAI(
   reply: string,
   userId: string,
-  text: string
+  text: string,
+  senderName: string | null
 ): Promise<boolean> {
-  // Build context: today's date + today's tasks, so the AI resolves relative
-  // dates correctly and can answer schedule questions.
+  // Build context: sender, current time, today's tasks — so the AI resolves
+  // relative dates, addresses the right person, and knows when to go dark mode.
   const today = todayISO();
   const todayItems = await queryAllForDate(today);
+  const undone = todayItems.filter((t) => !t.done);
   const taskCtx =
     todayItems.length > 0
       ? todayItems
@@ -227,11 +231,15 @@ async function handleWithAI(
             (t) =>
               `- ${t.dueTime ?? "ทั้งวัน"} ${t.title}${
                 t.source === "project" ? " (สถานธรรม)" : ""
-              }${t.done ? " [เสร็จแล้ว]" : ""}`
+              }${t.done ? " [เสร็จแล้ว]" : " [ยังไม่เสร็จ]"}`
           )
           .join("\n")
       : "(วันนี้ยังไม่มีงาน)";
-  const context = `วันนี้คือ ${today} (${thaiDateLabel(today)})\nงานวันนี้:\n${taskCtx}`;
+  const context =
+    `ผู้ส่งตอนนี้: ${senderName ?? "ไม่ทราบชื่อ"}\n` +
+    `เวลาตอนนี้: ${today} (${thaiDateLabel(today)})\n` +
+    `จำนวนงานวันนี้ที่ยังไม่เสร็จ: ${undone.length}\n` +
+    `งานวันนี้:\n${taskCtx}`;
 
   const intent = await parseIntent(text, context);
   if (!intent) {
@@ -313,11 +321,14 @@ async function handleWithAI(
     }
 
     case "chat":
-    default:
+    default: {
+      // Use the full-persona model for a richer น้องวินัย reply.
+      const chat = await askAI(text, context);
       await replyMessage(reply, [
-        textMessage(intent.reply || "ได้ค่ะ 😊", homeQuickReply()),
+        textMessage(chat || intent.reply || "ว่าไงบอส 😎", homeQuickReply()),
       ]);
       return true;
+    }
   }
   return false;
 }

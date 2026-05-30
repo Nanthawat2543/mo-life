@@ -34,6 +34,27 @@ export async function replyMessage(
   await client.replyMessage({ replyToken, messages });
 }
 
+/** Best-effort: get the sender's LINE display name (group or 1:1). */
+export async function getSenderName(event: any): Promise<string | null> {
+  try {
+    const src = event.source ?? {};
+    const userId = src.userId;
+    if (!userId) return null;
+    let profile: any;
+    if (src.type === "group" && src.groupId) {
+      profile = await client.getGroupMemberProfile(src.groupId, userId);
+    } else if (src.type === "room" && src.roomId) {
+      profile = await client.getRoomMemberProfile(src.roomId, userId);
+    } else {
+      profile = await client.getProfile(userId);
+    }
+    return profile?.displayName ?? null;
+  } catch (err) {
+    console.warn("[line] getSenderName failed:", err);
+    return null;
+  }
+}
+
 export function textMessage(text: string, quickReply?: QuickReplyItem[]): Message {
   const msg: any = { type: "text", text };
   if (quickReply && quickReply.length) {
@@ -461,7 +482,7 @@ export function addDateQuickReply(): QuickReplyItem[] {
 
 export function helpText(): string {
   return [
-    "📖 น้องช่วยจำ — วิธีใช้งาน",
+    "📖 น้องวินัย — วิธีใช้งาน",
     "",
     "ทำได้ทั้งกดปุ่มและพิมพ์ค่ะ 😊",
     "",
