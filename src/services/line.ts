@@ -307,10 +307,14 @@ export function eveningFlex(pending: TaskItem[]): FlexMessage {
   };
 }
 
-export function reminderFlex(task: TaskItem, leadMin: number): FlexMessage {
+export function reminderFlex(
+  task: TaskItem,
+  leadMin: number,
+  labelOverride?: string
+): FlexMessage {
   // leadMin > 0: upcoming; <= 0: due now / overdue (nag mode)
   const headline =
-    leadMin > 0 ? `⏰ อีก ${leadMin} นาที` : "⏰ ถึงเวลาแล้ว!";
+    labelOverride ?? (leadMin > 0 ? `⏰ อีก ${leadMin} นาที` : "⏰ ถึงเวลาแล้ว!");
   const contents: FlexComponent[] = [
     {
       type: "text",

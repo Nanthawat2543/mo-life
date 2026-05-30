@@ -128,6 +128,20 @@ export function parseThaiDate(text: string): {
   return { date, time };
 }
 
+/**
+ * Minutes from now until a given date+time (in the configured tz).
+ * Positive = future, negative = past. Works across multiple days.
+ */
+export function minutesUntilDateTime(
+  dateStr: string,
+  timeStr: string
+): number {
+  const iso = `${dateStr}T${timeStr}:00${tzOffsetString()}`;
+  const eventMs = Date.parse(iso);
+  if (Number.isNaN(eventMs)) return NaN;
+  return (eventMs - now().getTime()) / 60000;
+}
+
 /** Friendly Thai date label, e.g. "ศุกร์ 30 พ.ค.". */
 export function thaiDateLabel(dateStr: string): string {
   const [y, m, d] = dateStr.split("-").map(Number);

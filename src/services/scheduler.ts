@@ -2,7 +2,8 @@ import cron from "node-cron";
 import { config } from "../config";
 import {
   queryPendingTodayTasks,
-  queryTimedTasksToday,
+  queryTasks,
+  queryProjects,
 } from "./notion";
 import {
   pushMessage,
@@ -10,7 +11,7 @@ import {
   eveningFlex,
   reminderFlex,
 } from "./line";
-import { now, toLocalTimeStr } from "../utils/date";
+import { todayISO, addDaysISO, minutesUntilDateTime } from "../utils/date";
 
 // ─── Job functions (reusable: cron + HTTP trigger) ───────────────
 
@@ -26,27 +27,47 @@ export async function runEveningRecap(): Promise<void> {
   console.log(`[job] evening recap sent (${pending.length} pending)`);
 }
 
-/** Returns minutes from `nowLocal` (HH:mm) until `eventTime` (HH:mm), same day. */
-function minutesUntil(nowHHmm: string, eventHHmm: string): number {
-  const [nh, nm] = nowHHmm.split(":").map(Number);
-  const [eh, em] = eventHHmm.split(":").map(Number);
-  return eh * 60 + em - (nh * 60 + nm);
-}
+// Milestones (minutes before the event) for สถานธรรม / project work.
+// 1 week → 1 hour → 30 min → 10 min → at the time.
+const PROJECT_MILESTONES = [
+  { m: 7 * 24 * 60, label: "🗓️ อีก 1 สัปดาห์" },
+  { m: 60, label: "⏰ อีก 1 ชั่วโมง" },
+  { m: 30, label: "⏰ อีก 30 นาที" },
+  { m: 10, label: "⏰ อีก 10 นาที" },
+  { m: 0, label: "🔔 ถึงเวลาแล้ว!" },
+];
 
 export async function runReminders(): Promise<void> {
-  const nowLocalTime = toLocalTimeStr(now());
-  const tasks = await queryTimedTasksToday();
-  const lead = config.reminderLeadMinutes;
+  const step = config.reminderStepMinutes; // 5 — width of each emission window
+  const lead = config.reminderLeadMinutes; // 30
 
-  // "Nag until done": remind from `lead` minutes before the due time and keep
-  // re-sending on every run until the task is marked done. No dedup — repeats
-  // are the intended behaviour. Press ✅ เสร็จ to stop.
-  for (const task of tasks) {
-    if (!task.dueTime || task.done) continue;
-    const diffMin = minutesUntil(nowLocalTime, task.dueTime);
-    if (diffMin <= lead) {
-      await pushMessage([reminderFlex(task, diffMin)]);
-      console.log(`[job] reminder sent: ${task.title} (${diffMin} min)`);
+  // ── Personal tasks (Tasks DB): nag every run within `lead` until done ──
+  const today = todayISO();
+  const tasks = (await queryTasks(today)).filter((t) => !t.done && t.dueTime);
+  for (const t of tasks) {
+    const diff = minutesUntilDateTime(t.dueDate!, t.dueTime!);
+    if (!Number.isNaN(diff) && diff <= lead) {
+      await pushMessage([reminderFlex(t, Math.round(diff))]);
+      console.log(`[job] task nag: ${t.title} (${Math.round(diff)} min)`);
+    }
+  }
+
+  // ── Projects (สถานธรรม): fire ONCE at each milestone, not nagging ──
+  // Look ahead far enough to catch the 1-week milestone.
+  const projects = (
+    await queryProjects(today, addDaysISO(8))
+  ).filter((p) => !p.done && p.dueTime);
+  for (const p of projects) {
+    const diff = minutesUntilDateTime(p.dueDate!, p.dueTime!);
+    if (Number.isNaN(diff)) continue;
+    // A milestone fires when diff is inside (m - step, m] — a single cron step,
+    // so each milestone triggers about once with no database needed.
+    const hit = PROJECT_MILESTONES.find(
+      (ms) => diff > ms.m - step && diff <= ms.m
+    );
+    if (hit) {
+      await pushMessage([reminderFlex(p, Math.round(diff), hit.label)]);
+      console.log(`[job] project milestone: ${p.title} (${hit.label})`);
     }
   }
 }
