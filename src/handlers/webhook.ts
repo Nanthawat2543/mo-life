@@ -61,8 +61,9 @@ export async function webhookHandler(req: Request, res: Response): Promise<void>
     return;
   }
 
-  res.status(200).send("OK");
-
+  // IMPORTANT: on serverless (Vercel) the function is frozen as soon as the
+  // response is sent, so we must finish all async work (Notion + LINE replies)
+  // BEFORE responding. Process events first, then return 200.
   const events = req.body?.events ?? [];
   for (const event of events) {
     try {
@@ -83,6 +84,8 @@ export async function webhookHandler(req: Request, res: Response): Promise<void>
       console.error("[webhook] Event handling error:", err);
     }
   }
+
+  res.status(200).send("OK");
 }
 
 // ─── Text router ─────────────────────────────────────────────────
