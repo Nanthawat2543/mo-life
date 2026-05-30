@@ -22,7 +22,7 @@ import {
   deleteConfirmQuickReply,
   addDateQuickReply,
 } from "../services/line";
-import { askAI } from "../services/ai";
+import { askAI, parseIntent } from "../services/ai";
 import {
   todayISO,
   tomorrowISO,
@@ -195,36 +195,142 @@ async function handleText(event: any): Promise<void> {
     return;
   }
 
-  // 7) Fallback → AI conversation (Gemini). If no key/AI fails, show help hint.
+  // 7) AI-first: parse natural language into an intent and EXECUTE it for real.
   try {
-    const todayItems = await queryAllForDate(todayISO());
-    const context =
-      todayItems.length > 0
-        ? "งานวันนี้:\n" +
-          todayItems
-            .map(
-              (t) =>
-                `- ${t.dueTime ?? "ทั้งวัน"} ${t.title}${
-                  t.source === "project" ? " (สถานธรรม)" : ""
-                }${t.done ? " [เสร็จแล้ว]" : ""}`
-            )
-            .join("\n")
-        : "วันนี้ยังไม่มีงานในตาราง";
-    const aiReply = await askAI(text, context);
-    if (aiReply) {
-      await replyMessage(reply, [textMessage(aiReply, homeQuickReply())]);
-      return;
-    }
+    if (await handleWithAI(reply, userId, text)) return;
   } catch (err) {
-    console.error("[webhook] AI fallback error:", err);
+    console.error("[webhook] AI handling error:", err);
   }
 
   await replyMessage(reply, [
     textMessage(
-      'ไม่เข้าใจคำสั่งค่ะ 😅 ลองกดเมนูด้านล่าง หรือพิมพ์ "ช่วยเหลือ" นะคะ',
+      'ไม่เข้าใจค่ะ 😅 ลองกดเมนูด้านล่าง หรือพิมพ์ "ช่วยเหลือ" นะคะ',
       homeQuickReply()
     ),
   ]);
+}
+
+// ─── AI-driven natural language → real Notion actions ────────────
+async function handleWithAI(
+  reply: string,
+  userId: string,
+  text: string
+): Promise<boolean> {
+  // Build context: today's date + today's tasks, so the AI resolves relative
+  // dates correctly and can answer schedule questions.
+  const today = todayISO();
+  const todayItems = await queryAllForDate(today);
+  const taskCtx =
+    todayItems.length > 0
+      ? todayItems
+          .map(
+            (t) =>
+              `- ${t.dueTime ?? "ทั้งวัน"} ${t.title}${
+                t.source === "project" ? " (สถานธรรม)" : ""
+              }${t.done ? " [เสร็จแล้ว]" : ""}`
+          )
+          .join("\n")
+      : "(วันนี้ยังไม่มีงาน)";
+  const context = `วันนี้คือ ${today} (${thaiDateLabel(today)})\nงานวันนี้:\n${taskCtx}`;
+
+  const intent = await parseIntent(text, context);
+  if (!intent) {
+    // AI unavailable → plain chat reply if possible, else give up (false).
+    const chat = await askAI(text, context);
+    if (chat) {
+      await replyMessage(reply, [textMessage(chat, homeQuickReply())]);
+      return true;
+    }
+    return false;
+  }
+
+  switch (intent.action) {
+    case "add": {
+      if (!intent.title) break;
+      const date = intent.date || today;
+      const time = intent.time || null;
+      if (intent.database === "project") {
+        await createProject({ title: intent.title, date, time });
+      } else {
+        await createTask({ title: intent.title, date, time });
+      }
+      const where =
+        intent.database === "project"
+          ? "🏛️ งานสถานธรรม"
+          : "📌 งานส่วนตัว";
+      const when = `${thaiDateLabel(date)}${time ? ` เวลา ${time} น.` : ""}`;
+      await replyMessage(reply, [
+        textMessage(
+          `เพิ่มแล้วค่ะ ✅\n${where}\n• ${intent.title}\n📅 ${when}`,
+          homeQuickReply()
+        ),
+      ]);
+      return true;
+    }
+
+    case "list": {
+      const r = intent.range ?? "today";
+      if (r === "tomorrow")
+        await sendTaskList(reply, userId, "📋 งานพรุ่งนี้", tomorrowISO());
+      else if (r === "week")
+        await sendTaskList(reply, userId, "📋 งานสัปดาห์นี้", today, endOfWeekISO());
+      else await sendTaskList(reply, userId, "📋 งานวันนี้", today);
+      return true;
+    }
+
+    case "complete":
+    case "delete": {
+      if (!intent.title) break;
+      const found = await findByTitle(today, endOfWeekISO(), intent.title);
+      if (found.length === 0) {
+        await replyMessage(reply, [
+          textMessage(
+            `หาไม่เจองาน "${intent.title}" ค่ะ ลองพิมพ์ "วันนี้" ดูรายการนะคะ`,
+            homeQuickReply()
+          ),
+        ]);
+        return true;
+      }
+      if (found.length > 1) {
+        setSession(userId, found.map((f) => f.id));
+        await replyMessage(reply, [
+          taskListFlex(`เจอหลายงานที่ตรงกับ "${intent.title}" — เลือกจากรายการนี้นะคะ`, found),
+        ]);
+        return true;
+      }
+      if (intent.action === "complete") {
+        await completeTask(found[0].id);
+        await replyMessage(reply, [
+          textMessage(`เสร็จแล้ว! "${found[0].title}" เก่งมากค่ะ 🎉`, homeQuickReply()),
+        ]);
+      } else {
+        await archiveTask(found[0].id);
+        await replyMessage(reply, [
+          textMessage(`ลบงาน "${found[0].title}" แล้วค่ะ 🗑️`, homeQuickReply()),
+        ]);
+      }
+      return true;
+    }
+
+    case "chat":
+    default:
+      await replyMessage(reply, [
+        textMessage(intent.reply || "ได้ค่ะ 😊", homeQuickReply()),
+      ]);
+      return true;
+  }
+  return false;
+}
+
+/** Find tasks in a date range whose title contains the query (both DBs). */
+async function findByTitle(from: string, to: string, query: string) {
+  const items = await queryAllForDate(from, to);
+  const q = query.trim().toLowerCase();
+  const exact = items.filter((i) => i.title.trim().toLowerCase() === q);
+  if (exact.length) return exact;
+  return items.filter(
+    (i) => !i.done && i.title.toLowerCase().includes(q)
+  );
 }
 
 // ─── Guided flow text steps ──────────────────────────────────────
