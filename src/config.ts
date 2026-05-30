@@ -20,6 +20,7 @@ export const config = {
     // the first time someone messages it or adds it to a group.
     targetId: process.env.LINE_TARGET_ID ?? "",
   },
+  geminiApiKey: process.env.GEMINI_API_KEY ?? "",
   liffId: process.env.LIFF_ID ?? "",
   timezone: process.env.TIMEZONE ?? "Asia/Bangkok",
   port: parseInt(process.env.PORT ?? "3000", 10),

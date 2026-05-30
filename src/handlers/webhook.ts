@@ -22,6 +22,7 @@ import {
   deleteConfirmQuickReply,
   addDateQuickReply,
 } from "../services/line";
+import { askAI } from "../services/ai";
 import {
   todayISO,
   tomorrowISO,
@@ -194,7 +195,30 @@ async function handleText(event: any): Promise<void> {
     return;
   }
 
-  // 7) Fallback
+  // 7) Fallback → AI conversation (Gemini). If no key/AI fails, show help hint.
+  try {
+    const todayItems = await queryAllForDate(todayISO());
+    const context =
+      todayItems.length > 0
+        ? "งานวันนี้:\n" +
+          todayItems
+            .map(
+              (t) =>
+                `- ${t.dueTime ?? "ทั้งวัน"} ${t.title}${
+                  t.source === "project" ? " (สถานธรรม)" : ""
+                }${t.done ? " [เสร็จแล้ว]" : ""}`
+            )
+            .join("\n")
+        : "วันนี้ยังไม่มีงานในตาราง";
+    const aiReply = await askAI(text, context);
+    if (aiReply) {
+      await replyMessage(reply, [textMessage(aiReply, homeQuickReply())]);
+      return;
+    }
+  } catch (err) {
+    console.error("[webhook] AI fallback error:", err);
+  }
+
   await replyMessage(reply, [
     textMessage(
       'ไม่เข้าใจคำสั่งค่ะ 😅 ลองกดเมนูด้านล่าง หรือพิมพ์ "ช่วยเหลือ" นะคะ',
