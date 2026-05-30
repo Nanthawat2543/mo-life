@@ -30,14 +30,19 @@ app.use(
 // ─── LINE webhook ────────────────────────────────────────────────
 app.post("/line/webhook", webhookHandler);
 
-// ─── HTTP cron triggers (hit by GitHub Actions / external scheduler) ──
-// Protect with ?key=CRON_SECRET.
+// ─── HTTP cron triggers ───────────────────────────────────────────
+// Accepts either ?key=CRON_SECRET (manual / external scheduler) or
+// "Authorization: Bearer CRON_SECRET" (sent automatically by Vercel Cron
+// when CRON_SECRET is configured as an env var).
 function checkCronKey(req: express.Request, res: express.Response): boolean {
   if (!config.cronSecret) {
     res.status(503).send("CRON_SECRET not configured");
     return false;
   }
-  if (req.query.key !== config.cronSecret) {
+  const viaQuery = req.query.key === config.cronSecret;
+  const viaHeader =
+    req.headers.authorization === `Bearer ${config.cronSecret}`;
+  if (!viaQuery && !viaHeader) {
     res.status(401).send("Unauthorized");
     return false;
   }
