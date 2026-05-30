@@ -141,8 +141,11 @@ async function handleText(event: any): Promise<void> {
     return;
   }
 
-  // 5a) Add to the Projects DB (งานธรรม / สถานธรรม)
-  const addProjectMatch = text.match(/^เพิ่ม(?:งานธรรม|สถานธรรม|โปรเจค|ธรรมะ)\s+(.+)/);
+  // 5a) Add to the Projects DB (งานธรรม / สถานธรรม). Accept many phrasings:
+  // เพิ่มสถานธรรม, เพิ่มงานสถานธรรม, เพิ่มงานธรรม, เพิ่มงานวัด, เพิ่มโปรเจค, เพิ่มธรรมะ
+  const addProjectMatch = text.match(
+    /^เพิ่ม(?:งาน)?(?:สถานธรรม|ธรรมะ|งานธรรม|ธรรม|วัด|โปรเจค|โปรเจกต์|โปรเจ็ค)\s+(.+)/
+  );
   if (addProjectMatch) {
     await handleQuickAdd(reply, addProjectMatch[1], "project");
     return;
