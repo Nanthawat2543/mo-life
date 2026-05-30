@@ -30,6 +30,8 @@ export const config = {
     reminder: process.env.CRON_REMINDER ?? "*/5 * * * *",
   },
   reminderLeadMinutes: parseInt(process.env.REMINDER_LEAD_MINUTES ?? "30", 10),
+  // The reminder cron interval (minutes). Defines the stateless emission window.
+  reminderStepMinutes: parseInt(process.env.REMINDER_STEP_MINUTES ?? "5", 10),
   // Shared secret protecting the HTTP cron-trigger endpoints (free hosting).
   cronSecret: process.env.CRON_SECRET ?? "",
 };

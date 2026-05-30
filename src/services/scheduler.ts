@@ -10,8 +10,7 @@ import {
   eveningFlex,
   reminderFlex,
 } from "./line";
-import { wasSent, markSent, cleanupOld } from "../utils/reminderStore";
-import { now, todayISO, toLocalDateStr, toLocalTimeStr } from "../utils/date";
+import { now, toLocalTimeStr } from "../utils/date";
 
 // ─── Job functions (reusable: cron + HTTP trigger) ───────────────
 
@@ -35,26 +34,23 @@ function minutesUntil(nowHHmm: string, eventHHmm: string): number {
 }
 
 export async function runReminders(): Promise<void> {
-  const today = todayISO();
   const nowLocalTime = toLocalTimeStr(now());
   const tasks = await queryTimedTasksToday();
+  const lead = config.reminderLeadMinutes;
+
+  // Stateless dedup: fire only inside a single cron-step window just before the
+  // lead time, i.e. minutesUntil ∈ (lead - step, lead]. With a 5-min cron this
+  // window is hit exactly once per event, so no database is needed.
+  const step = config.reminderStepMinutes;
 
   for (const task of tasks) {
     if (!task.dueTime || task.done) continue;
     const diffMin = minutesUntil(nowLocalTime, task.dueTime);
-    if (diffMin > 0 && diffMin <= config.reminderLeadMinutes) {
-      if (!wasSent(task.id, today)) {
-        await pushMessage([reminderFlex(task, diffMin)]);
-        markSent(task.id, today);
-        console.log(`[job] reminder sent: ${task.title} (${diffMin} min)`);
-      }
+    if (diffMin > lead - step && diffMin <= lead) {
+      await pushMessage([reminderFlex(task, diffMin)]);
+      console.log(`[job] reminder sent: ${task.title} (${diffMin} min)`);
     }
   }
-
-  // Daily cleanup of yesterday's dedup records
-  const yest = new Date(now());
-  yest.setUTCDate(yest.getUTCDate() - 1);
-  cleanupOld(toLocalDateStr(yest));
 }
 
 // ─── In-process cron (for always-on hosts) ───────────────────────

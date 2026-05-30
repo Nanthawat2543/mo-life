@@ -1,28 +1,14 @@
-import Database from "better-sqlite3";
-import path from "path";
+// Push-target store. Serverless-friendly: no filesystem.
+// Source of truth is the LINE_TARGET_ID env var (set once the group/user id is
+// known). A module-level cache also captures the id at runtime from incoming
+// webhook events, which works while an instance stays warm.
 
-// Reuse the same DB file as the reminder store.
-const db = new Database(path.join(process.cwd(), "reminders.db"));
-
-db.exec(`
-  CREATE TABLE IF NOT EXISTS kv (
-    k TEXT PRIMARY KEY,
-    v TEXT NOT NULL
-  )
-`);
-
-const getStmt = db.prepare("SELECT v FROM kv WHERE k = ?");
-const setStmt = db.prepare(
-  "INSERT INTO kv (k, v) VALUES (?, ?) ON CONFLICT(k) DO UPDATE SET v = excluded.v"
-);
-
-const TARGET_KEY = "push_target";
+let runtimeTarget: string | null = null;
 
 export function getStoredTarget(): string | null {
-  const row = getStmt.get(TARGET_KEY) as { v: string } | undefined;
-  return row?.v ?? null;
+  return runtimeTarget;
 }
 
 export function setStoredTarget(id: string): void {
-  setStmt.run(TARGET_KEY, id);
+  runtimeTarget = id;
 }
