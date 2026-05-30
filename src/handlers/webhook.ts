@@ -10,6 +10,7 @@ import {
   updateTaskProperty,
   setTaskDateTime,
   getTaskTitle,
+  moveTask,
 } from "../services/notion";
 import {
   replyMessage,
@@ -155,6 +156,18 @@ async function handleText(event: any): Promise<void> {
   const addMatch = text.match(/^เพิ่ม\s+(.+)/);
   if (addMatch) {
     await handleQuickAdd(reply, addMatch[1], "task");
+    return;
+  }
+
+  // 5c) Move a task between databases ("ย้าย <index> สถานธรรม" / "ย้าย <index> ส่วนตัว")
+  const moveMatch = text.match(/^ย้าย\s+(\d+)\s+(.+)/);
+  if (moveMatch) {
+    const idx = parseInt(moveMatch[1], 10);
+    const dest = moveMatch[2];
+    let target: "task" | "project" | null = null;
+    if (/สถานธรรม|โปรเจค|โปรเจกต์|วัด|ธรรม/.test(dest)) target = "project";
+    else if (/ส่วนตัว|ส่วนตว|task|tasks/i.test(dest)) target = "task";
+    await moveByIndex(reply, userId, idx, target);
     return;
   }
 
@@ -338,6 +351,39 @@ async function editByIndex(
     await replyMessage(reply, [textMessage("แก้ไขแล้วค่ะ ✏️✅", homeQuickReply())]);
   } catch (err: any) {
     await replyMessage(reply, [textMessage(`แก้ไขไม่สำเร็จค่ะ: ${err.message}`)]);
+  }
+}
+
+async function moveByIndex(
+  reply: string,
+  userId: string,
+  index: number,
+  target: "task" | "project" | null
+) {
+  const pageId = getPageId(userId, index);
+  if (!pageId) return notFound(reply);
+  if (!target) {
+    await replyMessage(reply, [
+      textMessage(
+        'ระบุปลายทางด้วยค่ะ เช่น "ย้าย 1 สถานธรรม" หรือ "ย้าย 1 ส่วนตัว"'
+      ),
+    ]);
+    return;
+  }
+  try {
+    const res = await moveTask(pageId, target);
+    if (!res.moved) {
+      await replyMessage(reply, [
+        textMessage("งานนี้อยู่ในฐานนั้นอยู่แล้วค่ะ 😊", homeQuickReply()),
+      ]);
+      return;
+    }
+    const where = target === "project" ? "🏛️ สถานธรรม (โปรเจค)" : "📌 งานส่วนตัว (Tasks)";
+    await replyMessage(reply, [
+      textMessage(`ย้าย "${res.title}" ไป ${where} แล้วค่ะ ✅`, homeQuickReply()),
+    ]);
+  } catch (err: any) {
+    await replyMessage(reply, [textMessage(`ย้ายไม่สำเร็จค่ะ: ${err.message}`)]);
   }
 }
 

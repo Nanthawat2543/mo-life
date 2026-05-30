@@ -341,3 +341,32 @@ export async function getTaskTitle(pageId: string): Promise<string> {
   const { page, schema } = await pageWithSchema(pageId);
   return titleText(page.properties?.[schema.title]) || "(ไม่มีชื่อ)";
 }
+
+/**
+ * Move a task to the other database. Notion can't re-parent a page across
+ * databases (different property names), so we re-create it in the target DB
+ * with the same title/date/time/location and archive the original.
+ */
+export async function moveTask(
+  pageId: string,
+  target: "task" | "project"
+): Promise<{ moved: boolean; title: string; newId?: string }> {
+  const { page, schema } = await pageWithSchema(pageId);
+  const title = titleText(page.properties?.[schema.title]) || "(ไม่มีชื่อ)";
+
+  // Already in the target DB → nothing to do.
+  if (schema.kind === target) return { moved: false, title };
+
+  const rawDate = page.properties?.[schema.date]?.date?.start ?? null;
+  const { date, time } = splitNotionDate(rawDate);
+  const location = richText(page.properties?.[schema.location]) || null;
+  const useDate = date ?? todayISO();
+
+  const newId =
+    target === "project"
+      ? await createProject({ title, date: useDate, time, location })
+      : await createTask({ title, date: useDate, time, location });
+
+  await notion.pages.update({ page_id: pageId, archived: true });
+  return { moved: true, title, newId };
+}
