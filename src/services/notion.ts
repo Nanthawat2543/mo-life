@@ -204,21 +204,77 @@ export async function createProject(params: {
   return page.id;
 }
 
+// ─── Schema-aware editing (works for BOTH databases) ─────────────
+// The personal Tasks DB and the Projects (สถานธรรม) DB use different property
+// names. We detect which DB a page belongs to and map field names accordingly.
+
+interface DbSchema {
+  kind: "task" | "project";
+  title: string;
+  date: string;
+  status: string;
+  location: string;
+  doneCheckbox: string | null;
+  inProgress: string; // status option name for "in progress"
+}
+
+const TASK_SCHEMA: DbSchema = {
+  kind: "task",
+  title: "Task",
+  date: "Due Date",
+  status: "Status",
+  location: "Location",
+  doneCheckbox: "เสร็จเรียบร้อย",
+  inProgress: "กำลังดำเนินงาน",
+};
+
+const PROJECT_SCHEMA: DbSchema = {
+  kind: "project",
+  title: "ชื่อโปรเจค",
+  date: "วันที่",
+  status: "สถานะ",
+  location: "สถานที่",
+  doneCheckbox: null,
+  inProgress: "กำลังทำ",
+};
+
+function bare(id: string): string {
+  return id.replace(/-/g, "");
+}
+
+/** Retrieve a page and return both its raw data and the matching schema. */
+async function pageWithSchema(
+  pageId: string
+): Promise<{ page: any; schema: DbSchema }> {
+  const page: any = await notion.pages.retrieve({ page_id: pageId });
+  const parentDb = bare(page.parent?.database_id ?? "");
+  const schema =
+    parentDb === bare(config.notion.projectsDbId) ? PROJECT_SCHEMA : TASK_SCHEMA;
+  return { page, schema };
+}
+
+/** Normalise a free-text status value to the option name valid for this DB. */
+function normaliseStatus(value: string, schema: DbSchema): string {
+  if (/เสร็จ/.test(value)) return "เสร็จแล้ว";
+  if (/กำลัง/.test(value)) return schema.inProgress;
+  if (/ยังไม่/.test(value)) return "ยังไม่เริ่ม";
+  return value;
+}
+
 export async function completeTask(pageId: string): Promise<void> {
-  await notion.pages.update({
-    page_id: pageId,
-    properties: {
-      "เสร็จเรียบร้อย": { checkbox: true },
-      Status: { status: { name: "เสร็จแล้ว" } },
-    },
-  });
+  const { schema } = await pageWithSchema(pageId);
+  const properties: any = {
+    [schema.status]: { status: { name: "เสร็จแล้ว" } },
+  };
+  if (schema.doneCheckbox) {
+    properties[schema.doneCheckbox] = { checkbox: true };
+  }
+  await notion.pages.update({ page_id: pageId, properties });
 }
 
 export async function archiveTask(pageId: string): Promise<void> {
-  await notion.pages.update({
-    page_id: pageId,
-    archived: true,
-  });
+  // archived works the same for any database
+  await notion.pages.update({ page_id: pageId, archived: true });
 }
 
 export async function updateTaskProperty(
@@ -226,41 +282,38 @@ export async function updateTaskProperty(
   field: string,
   value: string
 ): Promise<void> {
+  const { page, schema } = await pageWithSchema(pageId);
   const properties: any = {};
 
   switch (field) {
     case "title":
     case "ชื่อ":
-      properties.Task = { title: [{ text: { content: value } }] };
+      properties[schema.title] = { title: [{ text: { content: value } }] };
       break;
     case "date":
-    case "วันที่": {
-      const hasTime = value.includes("T");
-      properties["Due Date"] = {
-        date: { start: hasTime ? value : value },
-      };
+    case "วันที่":
+      properties[schema.date] = { date: { start: value } };
       break;
-    }
     case "time":
     case "เวลา": {
-      const page = await notion.pages.retrieve({ page_id: pageId });
       const existingDate =
-        (page as any).properties["Due Date"]?.date?.start?.slice(0, 10) ??
-        todayISO();
-      properties["Due Date"] = {
+        page.properties[schema.date]?.date?.start?.slice(0, 10) ?? todayISO();
+      properties[schema.date] = {
         date: { start: toNotionDateTime(existingDate, value) },
       };
       break;
     }
     case "location":
     case "สถานที่":
-      properties.Location = {
+      properties[schema.location] = {
         rich_text: [{ text: { content: value } }],
       };
       break;
     case "status":
     case "สถานะ":
-      properties.Status = { status: { name: value } };
+      properties[schema.status] = {
+        status: { name: normaliseStatus(value, schema) },
+      };
       break;
     default:
       throw new Error(`ไม่รู้จักฟิลด์: ${field}`);
@@ -269,21 +322,22 @@ export async function updateTaskProperty(
   await notion.pages.update({ page_id: pageId, properties });
 }
 
-/** Set Due Date to an exact date + time (used by the LINE datetime picker). */
+/** Set the date/time to an exact value (used by the LINE datetime picker). */
 export async function setTaskDateTime(
   pageId: string,
   date: string,
   time: string | null
 ): Promise<void> {
+  const { schema } = await pageWithSchema(pageId);
   const start = time ? toNotionDateTime(date, time) : date;
   await notion.pages.update({
     page_id: pageId,
-    properties: { "Due Date": { date: { start } } },
+    properties: { [schema.date]: { date: { start } } },
   });
 }
 
 /** Fetch a single task's title (used to confirm before delete/edit). */
 export async function getTaskTitle(pageId: string): Promise<string> {
-  const page: any = await notion.pages.retrieve({ page_id: pageId });
-  return titleText(page.properties?.["Task"]) || "(ไม่มีชื่อ)";
+  const { page, schema } = await pageWithSchema(pageId);
+  return titleText(page.properties?.[schema.title]) || "(ไม่มีชื่อ)";
 }
