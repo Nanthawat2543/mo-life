@@ -138,8 +138,12 @@ export async function queryPendingTodayTasks(): Promise<TaskItem[]> {
 
 export async function queryTimedTasksToday(): Promise<TaskItem[]> {
   const today = todayISO();
-  const tasks = await queryTasks(today);
-  return tasks.filter((t) => !t.done && t.dueTime);
+  // Cover BOTH databases so reminders fire for personal tasks AND สถานธรรม work.
+  const [tasks, projects] = await Promise.all([
+    queryTasks(today),
+    queryProjects(today),
+  ]);
+  return [...tasks, ...projects].filter((t) => !t.done && t.dueTime);
 }
 
 // ─── CRUD ────────────────────────────────────────────────────────
