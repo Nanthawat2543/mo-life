@@ -1,0 +1,32 @@
+# Render Blueprint — free web service.
+# Deploy: push to GitHub, then on render.com → New → Blueprint → pick this repo.
+# Set the secret env vars (NOTION_TOKEN, LINE_*, etc.) in the Render dashboard.
+services:
+  - type: web
+    name: mo-life
+    runtime: node
+    plan: free
+    buildCommand: npm install && npm run build
+    startCommand: npm start
+    healthCheckPath: /
+    envVars:
+      - key: TIMEZONE
+        value: Asia/Bangkok
+      # Free instances sleep; use external cron (cron-job.org) to trigger jobs.
+      - key: DISABLE_INPROCESS_CRON
+        value: "1"
+      # Fill these in the Render dashboard (kept secret):
+      - key: NOTION_TOKEN
+        sync: false
+      - key: NOTION_TASKS_DB_ID
+        sync: false
+      - key: NOTION_PROJECTS_DB_ID
+        sync: false
+      - key: LINE_CHANNEL_ACCESS_TOKEN
+        sync: false
+      - key: LINE_CHANNEL_SECRET
+        sync: false
+      - key: LINE_TARGET_ID
+        sync: false
+      - key: CRON_SECRET
+        sync: false
