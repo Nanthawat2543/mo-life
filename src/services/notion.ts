@@ -174,6 +174,36 @@ export async function createTask(params: {
   return page.id;
 }
 
+/** Create an entry in the Projects DB (งานธรรม / สถานธรรม). */
+export async function createProject(params: {
+  title: string;
+  date: string;
+  time?: string | null;
+  location?: string | null;
+}): Promise<string> {
+  const dateValue: any = { start: params.date };
+  if (params.time) {
+    dateValue.start = toNotionDateTime(params.date, params.time);
+  }
+
+  const properties: any = {
+    "ชื่อโปรเจค": { title: [{ text: { content: params.title } }] },
+    "วันที่": { date: dateValue },
+    "สถานะ": { status: { name: "ยังไม่เริ่ม" } },
+  };
+  if (params.location) {
+    properties["สถานที่"] = {
+      rich_text: [{ text: { content: params.location } }],
+    };
+  }
+
+  const page = await notion.pages.create({
+    parent: { database_id: config.notion.projectsDbId },
+    properties,
+  });
+  return page.id;
+}
+
 export async function completeTask(pageId: string): Promise<void> {
   await notion.pages.update({
     page_id: pageId,

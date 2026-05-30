@@ -4,6 +4,7 @@ import { config } from "../config";
 import {
   queryAllForDate,
   createTask,
+  createProject,
   completeTask,
   archiveTask,
   updateTaskProperty,
@@ -140,10 +141,17 @@ async function handleText(event: any): Promise<void> {
     return;
   }
 
-  // 5) Quick add ("เพิ่ม <title> <date/time>")
+  // 5a) Add to the Projects DB (งานธรรม / สถานธรรม)
+  const addProjectMatch = text.match(/^เพิ่ม(?:งานธรรม|สถานธรรม|โปรเจค|ธรรมะ)\s+(.+)/);
+  if (addProjectMatch) {
+    await handleQuickAdd(reply, addProjectMatch[1], "project");
+    return;
+  }
+
+  // 5b) Quick add to personal Tasks ("เพิ่ม <title> <date/time>")
   const addMatch = text.match(/^เพิ่ม\s+(.+)/);
   if (addMatch) {
-    await handleQuickAdd(reply, addMatch[1]);
+    await handleQuickAdd(reply, addMatch[1], "task");
     return;
   }
 
@@ -256,7 +264,11 @@ async function sendTaskList(
 
 // ─── Add ─────────────────────────────────────────────────────────
 
-async function handleQuickAdd(reply: string, raw: string): Promise<void> {
+async function handleQuickAdd(
+  reply: string,
+  raw: string,
+  target: "task" | "project" = "task"
+): Promise<void> {
   const { date, time } = parseThaiDate(raw);
   const title = raw
     .replace(/วันนี้|พรุ่งนี้|มะรืน/g, "")
@@ -271,19 +283,25 @@ async function handleQuickAdd(reply: string, raw: string): Promise<void> {
     ]);
     return;
   }
-  await createTask({ title, date, time });
-  await confirmAdded(reply, title, date, time);
+  if (target === "project") {
+    await createProject({ title, date, time });
+  } else {
+    await createTask({ title, date, time });
+  }
+  await confirmAdded(reply, title, date, time, target);
 }
 
 async function confirmAdded(
   reply: string,
   title: string,
   date: string,
-  time: string | null
+  time: string | null,
+  target: "task" | "project" = "task"
 ): Promise<void> {
   const when = `${thaiDateLabel(date)}${time ? ` เวลา ${time} น.` : ""}`;
+  const where = target === "project" ? "🏛️ งานธรรม (โปรเจค)" : "📌 งานส่วนตัว (Tasks)";
   await replyMessage(reply, [
-    textMessage(`เพิ่มงานแล้ว ✅\n📌 ${title}\n📅 ${when}`, homeQuickReply()),
+    textMessage(`เพิ่มแล้ว ✅\n${where}\n• ${title}\n📅 ${when}`, homeQuickReply()),
   ]);
 }
 

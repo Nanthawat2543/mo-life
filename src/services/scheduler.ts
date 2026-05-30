@@ -38,15 +38,13 @@ export async function runReminders(): Promise<void> {
   const tasks = await queryTimedTasksToday();
   const lead = config.reminderLeadMinutes;
 
-  // Stateless dedup: fire only inside a single cron-step window just before the
-  // lead time, i.e. minutesUntil ∈ (lead - step, lead]. With a 5-min cron this
-  // window is hit exactly once per event, so no database is needed.
-  const step = config.reminderStepMinutes;
-
+  // "Nag until done": remind from `lead` minutes before the due time and keep
+  // re-sending on every run until the task is marked done. No dedup — repeats
+  // are the intended behaviour. Press ✅ เสร็จ to stop.
   for (const task of tasks) {
     if (!task.dueTime || task.done) continue;
     const diffMin = minutesUntil(nowLocalTime, task.dueTime);
-    if (diffMin > lead - step && diffMin <= lead) {
+    if (diffMin <= lead) {
       await pushMessage([reminderFlex(task, diffMin)]);
       console.log(`[job] reminder sent: ${task.title} (${diffMin} min)`);
     }

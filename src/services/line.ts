@@ -308,10 +308,13 @@ export function eveningFlex(pending: TaskItem[]): FlexMessage {
 }
 
 export function reminderFlex(task: TaskItem, leadMin: number): FlexMessage {
+  // leadMin > 0: upcoming; <= 0: due now / overdue (nag mode)
+  const headline =
+    leadMin > 0 ? `⏰ อีก ${leadMin} นาที` : "⏰ ถึงเวลาแล้ว!";
   const contents: FlexComponent[] = [
     {
       type: "text",
-      text: `⏰ อีก ${leadMin} นาที`,
+      text: headline,
       weight: "bold",
       size: "lg",
       color: "#FFFFFF",
@@ -348,10 +351,14 @@ export function reminderFlex(task: TaskItem, leadMin: number): FlexMessage {
   }
   bodyRows.push({
     type: "text",
-    text: "ไปด้วยกันนะ 💕",
+    text:
+      leadMin > 0
+        ? "ไปด้วยกันนะ 💕"
+        : "กดปุ่ม ✅ ด้านล่างเพื่อหยุดเตือนนะ 💕",
     size: "sm",
     color: "#E67E22",
     margin: "lg",
+    wrap: true,
   });
 
   const bubble: FlexBubble = {
@@ -457,13 +464,18 @@ export function helpText(): string {
     "📋 ดูงาน — กดเมนูล่าง หรือพิมพ์:",
     "  วันนี้ / พรุ่งนี้ / สัปดาห์นี้",
     "",
-    "➕ เพิ่มงาน — กดปุ่ม ➕ เพิ่มงาน",
-    "  แล้วทำตามขั้นตอน (เลือกวันจากปฏิทินได้)",
-    "  หรือพิมพ์สั้นๆ:",
-    "  เพิ่ม ออกกำลังกาย พรุ่งนี้ 18:00",
+    "➕ เพิ่มงานส่วนตัว (Tasks):",
+    "  เพิ่ม เอาผ้าไปอบ วันนี้ 18:00",
+    "",
+    "🏛️ เพิ่มงานธรรม/สถานธรรม (โปรเจค):",
+    "  เพิ่มงานธรรม ประชุมธรรม พรุ่งนี้ 09:00",
+    "  (ขึ้นต้นด้วย 'เพิ่มงานธรรม' = เข้าฐานโปรเจค)",
     "",
     "✅ ทำเสร็จ / ✏️ แก้ไข / 🗑️ ลบ",
     "  กดปุ่มบนการ์ดงานแต่ละใบได้เลย",
+    "",
+    "⏰ ถ้ามีเวลางาน บอทจะเตือนซ้ำทุก 5 นาที",
+    "  จนกว่าจะกดปุ่ม ✅ เสร็จ",
     "",
     "ทุกอย่างทำผ่าน LINE ได้หมดเลยค่ะ 💕",
   ].join("\n");
