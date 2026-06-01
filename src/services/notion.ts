@@ -153,6 +153,7 @@ export async function createTask(params: {
   date: string;
   time?: string | null;
   location?: string | null;
+  responsible?: string | null;
 }): Promise<string> {
   const dateValue: any = { start: params.date };
   if (params.time) {
@@ -170,6 +171,9 @@ export async function createTask(params: {
       rich_text: [{ text: { content: params.location } }],
     };
   }
+  if (params.responsible) {
+    properties["ผู้รับผิดชอบ"] = { select: { name: params.responsible } };
+  }
 
   const page = await notion.pages.create({
     parent: { database_id: config.notion.tasksDbId },
@@ -184,6 +188,7 @@ export async function createProject(params: {
   date: string;
   time?: string | null;
   location?: string | null;
+  responsible?: string | null;
 }): Promise<string> {
   const dateValue: any = { start: params.date };
   if (params.time) {
@@ -199,6 +204,9 @@ export async function createProject(params: {
     properties["สถานที่"] = {
       rich_text: [{ text: { content: params.location } }],
     };
+  }
+  if (params.responsible) {
+    properties["คนรับผิดชอบ"] = { multi_select: [{ name: params.responsible }] };
   }
 
   const page = await notion.pages.create({
@@ -220,6 +228,8 @@ interface DbSchema {
   location: string;
   doneCheckbox: string | null;
   inProgress: string; // status option name for "in progress"
+  responsible: string; // property name for the assignee
+  responsibleType: "select" | "multi_select";
 }
 
 const TASK_SCHEMA: DbSchema = {
@@ -230,6 +240,8 @@ const TASK_SCHEMA: DbSchema = {
   location: "Location",
   doneCheckbox: "เสร็จเรียบร้อย",
   inProgress: "กำลังดำเนินงาน",
+  responsible: "ผู้รับผิดชอบ",
+  responsibleType: "select",
 };
 
 const PROJECT_SCHEMA: DbSchema = {
@@ -240,6 +252,8 @@ const PROJECT_SCHEMA: DbSchema = {
   location: "สถานที่",
   doneCheckbox: null,
   inProgress: "กำลังทำ",
+  responsible: "คนรับผิดชอบ",
+  responsibleType: "multi_select",
 };
 
 function bare(id: string): string {
@@ -318,6 +332,14 @@ export async function updateTaskProperty(
       properties[schema.status] = {
         status: { name: normaliseStatus(value, schema) },
       };
+      break;
+    case "responsible":
+    case "ผู้รับผิดชอบ":
+    case "คนรับผิดชอบ":
+      properties[schema.responsible] =
+        schema.responsibleType === "multi_select"
+          ? { multi_select: [{ name: value }] }
+          : { select: { name: value } };
       break;
     default:
       throw new Error(`ไม่รู้จักฟิลด์: ${field}`);

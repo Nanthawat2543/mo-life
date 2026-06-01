@@ -294,15 +294,16 @@ function notificationBubble(
   };
 }
 
-export function morningFlex(items: TaskItem[]): FlexMessage {
+export function morningFlex(items: TaskItem[], footerOverride?: string): FlexMessage {
   const bubble = notificationBubble(
     "🌅",
-    "ตารางวันนี้",
+    "ตารางวันนี้ by น้องวินัย",
     "วันนี้ไม่มีงานในตาราง พักผ่อนด้วยกันนะ 💕",
     items,
-    items.length > 0
-      ? "สู้ๆ นะ ทำไปด้วยกัน! 💪✨ กดดูรายละเอียดพิมพ์ 'วันนี้'"
-      : "มีเวลาว่างก็ทำสิ่งดีๆ ร่วมกันนะ 🌷"
+    footerOverride ||
+      (items.length > 0
+        ? "สู้ๆ นะ ทำไปด้วยกัน! 💪✨ กดดูรายละเอียดพิมพ์ 'วันนี้'"
+        : "มีเวลาว่างก็ทำสิ่งดีๆ ร่วมกันนะ 🌷")
   );
   return {
     type: "flex",
@@ -311,15 +312,16 @@ export function morningFlex(items: TaskItem[]): FlexMessage {
   };
 }
 
-export function eveningFlex(pending: TaskItem[]): FlexMessage {
+export function eveningFlex(pending: TaskItem[], footerOverride?: string): FlexMessage {
   const bubble = notificationBubble(
     "🌙",
-    "สรุปตอนเย็น",
+    "สรุปตอนเย็น by น้องวินัย",
     "เก่งมากค่ะ! วันนี้ทำงานเสร็จหมดเลย 🎉",
     pending,
-    pending.length > 0
-      ? "ไม่เป็นไรนะ พรุ่งนี้ค่อยทำต่อก็ได้ ดูแลสุขภาพด้วย 🌟"
-      : "พักผ่อนให้สบายนะ ราตรีสวัสดิ์ 💕"
+    footerOverride ||
+      (pending.length > 0
+        ? "ไม่เป็นไรนะ พรุ่งนี้ค่อยทำต่อก็ได้ ดูแลสุขภาพด้วย 🌟"
+        : "พักผ่อนให้สบายนะ ราตรีสวัสดิ์ 💕")
   );
   return {
     type: "flex",

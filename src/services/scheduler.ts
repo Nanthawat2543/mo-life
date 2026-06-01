@@ -11,19 +11,41 @@ import {
   eveningFlex,
   reminderFlex,
 } from "./line";
+import { askAI } from "./ai";
 import { todayISO, addDaysISO, minutesUntilDateTime } from "../utils/date";
 
 // ─── Job functions (reusable: cron + HTTP trigger) ───────────────
 
+/** Ask น้องวินัย for a one-line headline; null-safe (falls back to default). */
+async function vinaiLine(prompt: string, items: { title: string; dueTime: string | null }[]): Promise<string | undefined> {
+  const list = items.length
+    ? items.map((t) => `- ${t.dueTime ?? "ทั้งวัน"} ${t.title}`).join("\n")
+    : "(ไม่มีงาน)";
+  const line = await askAI(prompt, `งาน:\n${list}`);
+  return line ? line.replace(/\n+/g, " ").slice(0, 200) : undefined;
+}
+
 export async function runMorningBrief(): Promise<void> {
   const items = await queryPendingTodayTasks();
-  await pushMessage([morningFlex(items)]);
+  const line = await vinaiLine(
+    items.length > 0
+      ? "ทักทายตอนเช้าแบบน้องวินัย สรุปสั้นๆ ว่าวันนี้มีกี่งาน ปลุกใจให้ลุยแบบมีวินัย 1-2 ประโยค"
+      : "ทักทายตอนเช้าแบบน้องวินัย วันนี้ตารางว่าง ชวนใช้เวลาทำสิ่งดีๆ สั้นๆ",
+    items
+  );
+  await pushMessage([morningFlex(items, line)]);
   console.log(`[job] morning brief sent (${items.length} items)`);
 }
 
 export async function runEveningRecap(): Promise<void> {
   const pending = await queryPendingTodayTasks();
-  await pushMessage([eveningFlex(pending)]);
+  const line = await vinaiLine(
+    pending.length > 0
+      ? `ตอนเย็นแล้วยังเหลือ ${pending.length} งานที่ไม่เสร็จ ดุแบบน้องวินัย DARK MODE tough-love + ธรรมะสั้นๆ เร่งให้รีบทำ 1-2 ประโยค`
+      : "ตอนเย็น งานเสร็จหมดแล้ว ชมแบบน้องวินัย + อวยพรราตรีสวัสดิ์ สั้นๆ",
+    pending
+  );
+  await pushMessage([eveningFlex(pending, line)]);
   console.log(`[job] evening recap sent (${pending.length} pending)`);
 }
 

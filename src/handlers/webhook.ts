@@ -257,19 +257,19 @@ async function handleWithAI(
       if (!intent.title) break;
       const date = intent.date || today;
       const time = intent.time || null;
+      const responsible = normaliseResponsible(intent.responsible);
       if (intent.database === "project") {
-        await createProject({ title: intent.title, date, time });
+        await createProject({ title: intent.title, date, time, responsible });
       } else {
-        await createTask({ title: intent.title, date, time });
+        await createTask({ title: intent.title, date, time, responsible });
       }
       const where =
-        intent.database === "project"
-          ? "🏛️ งานสถานธรรม"
-          : "📌 งานส่วนตัว";
+        intent.database === "project" ? "🏛️ งานสถานธรรม" : "📌 งานส่วนตัว";
+      const who = responsible ? ` (มอบให้บอส${responsible})` : "";
       const when = `${thaiDateLabel(date)}${time ? ` เวลา ${time} น.` : ""}`;
       await replyMessage(reply, [
         textMessage(
-          `เพิ่มแล้วค่ะ ✅\n${where}\n• ${intent.title}\n📅 ${when}`,
+          `เพิ่มแล้วค่ะ ✅\n${where}${who}\n• ${intent.title}\n📅 ${when}`,
           homeQuickReply()
         ),
       ]);
@@ -278,44 +278,69 @@ async function handleWithAI(
 
     case "list": {
       const r = intent.range ?? "today";
-      if (r === "tomorrow")
-        await sendTaskList(reply, userId, "📋 งานพรุ่งนี้", tomorrowISO());
-      else if (r === "week")
-        await sendTaskList(reply, userId, "📋 งานสัปดาห์นี้", today, endOfWeekISO());
-      else await sendTaskList(reply, userId, "📋 งานวันนี้", today);
+      const person = normaliseResponsible(intent.person) ?? normaliseResponsible(text);
+      const from = r === "tomorrow" ? tomorrowISO() : today;
+      const to = r === "week" ? endOfWeekISO() : r === "tomorrow" ? tomorrowISO() : today;
+      const label =
+        (r === "tomorrow" ? "📋 งานพรุ่งนี้" : r === "week" ? "📋 งานสัปดาห์นี้" : "📋 งานวันนี้") +
+        (person ? ` ของบอส${person}` : "");
+      await sendTaskList(reply, userId, label, from, to, person);
       return true;
     }
 
-    case "complete":
+    case "complete": {
+      if (!intent.title) break;
+      const found = await findByTitle(today, endOfWeekISO(), intent.title);
+      if (found.length === 0) return notFoundTitle(reply, intent.title);
+      if (found.length > 1) return pickFromMany(reply, userId, intent.title, found);
+      await completeTask(found[0].id);
+      await replyMessage(reply, [
+        textMessage(`เสร็จแล้ว! "${found[0].title}" เก่งมากค่ะ 🎉`, homeQuickReply()),
+      ]);
+      return true;
+    }
+
     case "delete": {
       if (!intent.title) break;
       const found = await findByTitle(today, endOfWeekISO(), intent.title);
-      if (found.length === 0) {
-        await replyMessage(reply, [
-          textMessage(
-            `หาไม่เจองาน "${intent.title}" ค่ะ ลองพิมพ์ "วันนี้" ดูรายการนะคะ`,
-            homeQuickReply()
-          ),
-        ]);
-        return true;
+      if (found.length === 0) return notFoundTitle(reply, intent.title);
+      if (found.length > 1) return pickFromMany(reply, userId, intent.title, found);
+      // Confirm before deleting (no accidental deletes).
+      await replyMessage(reply, [
+        textMessage(
+          `แน่ใจนะคะว่าจะลบ "${found[0].title}"? กดยืนยันด้านล่างค่ะ`,
+          deleteConfirmQuickReply(found[0].id)
+        ),
+      ]);
+      return true;
+    }
+
+    case "edit": {
+      if (!intent.title || !intent.value) break;
+      // Infer the field if the AI omitted it.
+      let field = intent.field;
+      if (!field) {
+        if (/^\d{1,2}:\d{2}$/.test(intent.value)) field = "time";
+        else if (/^\d{4}-\d{2}-\d{2}/.test(intent.value)) field = "date";
+        else if (/สถานที่|ที่/.test(text)) field = "location";
+        else if (/สถานะ|เสร็จ|กำลัง/.test(text)) field = "status";
+        else if (/มอส|อร|ผู้รับ|คนรับ/.test(text)) field = "responsible";
+        else field = "title";
       }
-      if (found.length > 1) {
-        setSession(userId, found.map((f) => f.id));
+      const found = await findByTitle(today, endOfWeekISO(), intent.title);
+      if (found.length === 0) return notFoundTitle(reply, intent.title);
+      if (found.length > 1) return pickFromMany(reply, userId, intent.title, found);
+      const val =
+        field === "responsible"
+          ? normaliseResponsible(intent.value) ?? intent.value
+          : intent.value;
+      try {
+        await updateTaskProperty(found[0].id, field, val);
         await replyMessage(reply, [
-          taskListFlex(`เจอหลายงานที่ตรงกับ "${intent.title}" — เลือกจากรายการนี้นะคะ`, found),
+          textMessage(`แก้ไข "${found[0].title}" แล้วค่ะ ✏️✅`, homeQuickReply()),
         ]);
-        return true;
-      }
-      if (intent.action === "complete") {
-        await completeTask(found[0].id);
-        await replyMessage(reply, [
-          textMessage(`เสร็จแล้ว! "${found[0].title}" เก่งมากค่ะ 🎉`, homeQuickReply()),
-        ]);
-      } else {
-        await archiveTask(found[0].id);
-        await replyMessage(reply, [
-          textMessage(`ลบงาน "${found[0].title}" แล้วค่ะ 🗑️`, homeQuickReply()),
-        ]);
+      } catch (e: any) {
+        await replyMessage(reply, [textMessage(`แก้ไขไม่สำเร็จค่ะ: ${e.message}`)]);
       }
       return true;
     }
@@ -387,9 +412,39 @@ async function findByTitle(from: string, to: string, query: string) {
   const q = query.trim().toLowerCase();
   const exact = items.filter((i) => i.title.trim().toLowerCase() === q);
   if (exact.length) return exact;
-  return items.filter(
-    (i) => !i.done && i.title.toLowerCase().includes(q)
-  );
+  return items.filter((i) => !i.done && i.title.toLowerCase().includes(q));
+}
+
+/** Map various spellings to the Notion option name "มอส"/"อร" (or null). */
+function normaliseResponsible(v?: string | null): string | null {
+  if (!v) return null;
+  const s = v.replace(/บอส|พี่|คุณ/g, "").trim().toLowerCase();
+  if (/มอส|mos/.test(s)) return "มอส";
+  if (/อร|ariya|อริยา/.test(s)) return "อร";
+  return null;
+}
+
+async function notFoundTitle(reply: string, title: string): Promise<boolean> {
+  await replyMessage(reply, [
+    textMessage(
+      `หาไม่เจองาน "${title}" ค่ะ ลองพิมพ์ "สัปดาห์นี้" ดูรายการนะคะ`,
+      homeQuickReply()
+    ),
+  ]);
+  return true;
+}
+
+async function pickFromMany(
+  reply: string,
+  userId: string,
+  title: string,
+  found: any[]
+): Promise<boolean> {
+  setSession(userId, found.map((f) => f.id));
+  await replyMessage(reply, [
+    taskListFlex(`เจอหลายงานที่ตรงกับ "${title}" — เลือกจากการ์ด หรือบอกเลขนะคะ`, found),
+  ]);
+  return true;
 }
 
 // ─── Guided flow text steps ──────────────────────────────────────
@@ -454,9 +509,13 @@ async function sendTaskList(
   userId: string,
   title: string,
   from: string,
-  to?: string
+  to?: string,
+  person?: string | null
 ): Promise<void> {
-  const items = await queryAllForDate(from, to);
+  let items = await queryAllForDate(from, to);
+  if (person) {
+    items = items.filter((i) => (i.responsible ?? "").includes(person));
+  }
   if (items.length === 0) {
     await replyMessage(reply, [
       textMessage(`${title}\nไม่มีงานค่ะ 🎉`, homeQuickReply()),
