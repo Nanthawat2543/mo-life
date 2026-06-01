@@ -320,6 +320,54 @@ async function handleWithAI(
       return true;
     }
 
+    case "move": {
+      if (!intent.title) break;
+      // Infer destination from the message if the AI didn't fill it.
+      let dest = intent.database;
+      if (!dest) {
+        if (/สถานธรรม|โปรเจค|วัด|ธรรม/.test(text)) dest = "project";
+        else if (/ส่วนตัว|task/i.test(text)) dest = "task";
+      }
+      if (!dest) {
+        await replyMessage(reply, [
+          textMessage(
+            'ย้ายไปฐานไหนคะ? บอก "สถานธรรม" หรือ "ส่วนตัว" ด้วยนะคะ',
+            homeQuickReply()
+          ),
+        ]);
+        return true;
+      }
+      intent.database = dest;
+      const found = await findByTitle(today, endOfWeekISO(), intent.title);
+      if (found.length === 0) {
+        await replyMessage(reply, [
+          textMessage(
+            `หาไม่เจองาน "${intent.title}" ค่ะ ลองพิมพ์ "สัปดาห์นี้" ดูรายการนะคะ`,
+            homeQuickReply()
+          ),
+        ]);
+        return true;
+      }
+      if (found.length > 1) {
+        setSession(userId, found.map((f) => f.id));
+        await replyMessage(reply, [
+          taskListFlex(`เจอหลายงานที่ตรงกับ "${intent.title}" — บอกเลขที่จะย้ายนะคะ (เช่น "ย้าย 1 ${intent.database === "project" ? "สถานธรรม" : "ส่วนตัว"}")`, found),
+        ]);
+        return true;
+      }
+      const res = await moveTask(found[0].id, intent.database);
+      const where = intent.database === "project" ? "🏛️ สถานธรรม (โปรเจค)" : "📌 งานส่วนตัว (Tasks)";
+      await replyMessage(reply, [
+        textMessage(
+          res.moved
+            ? `ย้าย "${res.title}" ไป ${where} แล้วค่ะ ✅`
+            : `งาน "${res.title}" อยู่ในฐานนั้นอยู่แล้วค่ะ 😊`,
+          homeQuickReply()
+        ),
+      ]);
+      return true;
+    }
+
     case "chat":
     default: {
       // Use the full-persona model for a richer น้องวินัย reply.
