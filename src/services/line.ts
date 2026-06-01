@@ -244,7 +244,8 @@ function notificationBubble(
   headerText: string,
   subText: string,
   items: TaskItem[],
-  footerText: string
+  footerText: string,
+  topLine?: string
 ): FlexBubble {
   const body: FlexComponent[] = [
     {
@@ -256,19 +257,44 @@ function notificationBubble(
     },
   ];
 
-  const rows: FlexComponent[] =
-    items.length > 0
+  const rows: FlexComponent[] = [];
+
+  // Power line at the very top (e.g. morning motivation), highlighted.
+  if (topLine) {
+    rows.push({
+      type: "box",
+      layout: "vertical",
+      backgroundColor: "#FFF6E5",
+      cornerRadius: "8px",
+      paddingAll: "12px",
+      margin: "md",
+      contents: [
+        {
+          type: "text",
+          text: `⚡ ${topLine}`,
+          size: "md",
+          weight: "bold",
+          color: "#E67E22",
+          wrap: true,
+        },
+      ],
+    });
+  }
+
+  rows.push(
+    ...(items.length > 0
       ? items.slice(0, 15).map((it, i) => summaryRow(it, i + 1))
       : [
           {
-            type: "text",
+            type: "text" as const,
             text: subText,
-            size: "sm",
+            size: "sm" as const,
             color: DARK,
-            margin: "lg",
+            margin: "lg" as const,
             wrap: true,
           },
-        ];
+        ])
+  );
 
   return {
     type: "bubble",
@@ -294,16 +320,21 @@ function notificationBubble(
   };
 }
 
-export function morningFlex(items: TaskItem[], footerOverride?: string): FlexMessage {
+export function morningFlex(
+  items: TaskItem[],
+  powerLine?: string,
+  footerOverride?: string
+): FlexMessage {
   const bubble = notificationBubble(
     "🌅",
-    "ตารางวันนี้ by น้องวินัย",
+    "อรุณสวัสดิ์ by น้องวินัย",
     "วันนี้ไม่มีงานในตาราง พักผ่อนด้วยกันนะ 💕",
     items,
     footerOverride ||
       (items.length > 0
-        ? "สู้ๆ นะ ทำไปด้วยกัน! 💪✨ กดดูรายละเอียดพิมพ์ 'วันนี้'"
-        : "มีเวลาว่างก็ทำสิ่งดีๆ ร่วมกันนะ 🌷")
+        ? "ลุยให้สุดวันนี้นะบอส! 💪✨ พิมพ์ 'วันนี้' ดูรายละเอียด"
+        : "มีเวลาว่างก็ทำสิ่งดีๆ ร่วมกันนะ 🌷"),
+    powerLine || "วันใหม่ พลังใหม่ ลุยเลยบอส! 🔥"
   );
   return {
     type: "flex",

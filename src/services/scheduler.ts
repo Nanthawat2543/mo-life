@@ -27,13 +27,12 @@ async function vinaiLine(prompt: string, items: { title: string; dueTime: string
 
 export async function runMorningBrief(): Promise<void> {
   const items = await queryPendingTodayTasks();
-  const line = await vinaiLine(
-    items.length > 0
-      ? "ทักทายตอนเช้าแบบน้องวินัย สรุปสั้นๆ ว่าวันนี้มีกี่งาน ปลุกใจให้ลุยแบบมีวินัย 1-2 ประโยค"
-      : "ทักทายตอนเช้าแบบน้องวินัย วันนี้ตารางว่าง ชวนใช้เวลาทำสิ่งดีๆ สั้นๆ",
+  // A punchy power line for the top of the morning card.
+  const power = await vinaiLine(
+    "ขอ 'ประโยคปลุกพลัง' ตอนเช้าแบบน้องวินัย สั้นกระชับ 1 ประโยค ให้ฮึกเหิมมีวินัย พร้อมลุยทั้งวัน (สอดแทรกพลังบวก/ธรรมะได้) ห้ามเกิน 1 บรรทัด",
     items
   );
-  await pushMessage([morningFlex(items, line)]);
+  await pushMessage([morningFlex(items, power)]);
   console.log(`[job] morning brief sent (${items.length} items)`);
 }
 
